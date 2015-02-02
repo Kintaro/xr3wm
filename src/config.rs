@@ -29,7 +29,7 @@ pub struct Config<'a> {
 impl<'a> Default for Config<'a> {
   fn default() -> Config<'a> {
     let mut config = Config {
-      workspaces: range(1us, 10).map(|idx| WorkspaceConfig { tag: idx.to_string(), screen: 0, layout: TallLayout::new(1, 0.5, 0.05) }).collect(),
+      workspaces: range(1us, 10).map(|idx| WorkspaceConfig { tag: idx.to_string(), screen: 0, layout: HSplitLayout::new()/*TallLayout::new(1, 0.5, 0.05)*/ }).collect(),
       mod_key: MOD_4,
       border_width: 2,
       border_color: 0x002e2e2e,
@@ -48,39 +48,59 @@ impl<'a> Default for Config<'a> {
           cmd: Cmd::Exec(String::from_str("dmenu_run"))
         },
         Keybinding {
+          mods: 0,
+          key: String::from_str("a"),
+          cmd: Cmd::NestContainer(0)
+        },
+        Keybinding {
+          mods: 0,
+          key: String::from_str("s"),
+          cmd: Cmd::NestContainer(1)
+        },
+        Keybinding {
           mods: MOD_SHIFT,
           key: String::from_str("q"),
           cmd: Cmd::KillClient
         },
         Keybinding {
           mods: 0,
-          key: String::from_str("j"),
-          cmd: Cmd::FocusDown
+          key: String::from_str("Left"),
+          cmd: Cmd::MoveFocus(MoveOp::Left)
         },
         Keybinding {
           mods: 0,
-          key: String::from_str("k"),
-          cmd: Cmd::FocusUp
+          key: String::from_str("Right"),
+          cmd: Cmd::MoveFocus(MoveOp::Right)
         },
         Keybinding {
           mods: 0,
-          key: String::from_str("m"),
-          cmd: Cmd::FocusMaster
+          key: String::from_str("Up"),
+          cmd: Cmd::MoveFocus(MoveOp::Up)
+        },
+        Keybinding {
+          mods: 0,
+          key: String::from_str("Down"),
+          cmd: Cmd::MoveFocus(MoveOp::Down)
         },
         Keybinding {
           mods: MOD_SHIFT,
-          key: String::from_str("j"),
-          cmd: Cmd::SwapDown
+          key: String::from_str("Left"),
+          cmd: Cmd::MoveWindow(MoveOp::Left)
         },
         Keybinding {
           mods: MOD_SHIFT,
-          key: String::from_str("k"),
-          cmd: Cmd::SwapUp
+          key: String::from_str("Right"),
+          cmd: Cmd::MoveWindow(MoveOp::Right)
         },
         Keybinding {
           mods: MOD_SHIFT,
-          key: String::from_str("Return"),
-          cmd: Cmd::SwapMaster
+          key: String::from_str("Up"),
+          cmd: Cmd::MoveWindow(MoveOp::Up)
+        },
+        Keybinding {
+          mods: MOD_SHIFT,
+          key: String::from_str("Down"),
+          cmd: Cmd::MoveWindow(MoveOp::Down)
         },
         Keybinding {
           mods: 0,

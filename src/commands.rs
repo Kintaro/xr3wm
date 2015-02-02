@@ -11,27 +11,24 @@ use std::old_io::process::Command;
 use std::old_io::fs::PathExtensions;
 use std::old_io::{fs, File, Open, Write};
 use config::Config;
-use layout::LayoutMsg;
+use layout::{Layout, LayoutMsg, MoveOp};
 use xlib_window_system::XlibWindowSystem;
-use workspaces::{Workspaces, MoveOp};
+use workspaces::Workspaces;
 use xlib::Window;
 
 pub enum Cmd {
   Exec(String),
   SwitchWorkspace(usize),
   SwitchScreen(usize),
+  MoveFocus(MoveOp),
+  MoveWindow(MoveOp),
   MoveToWorkspace(usize),
   MoveToScreen(usize),
+  NestContainer(usize),
   SendLayoutMsg(LayoutMsg),
   Reload,
   Exit,
   KillClient,
-  FocusUp,
-  FocusDown,
-  FocusMaster,
-  SwapUp,
-  SwapDown,
-  SwapMaster,
 }
 
 impl Cmd {
@@ -42,27 +39,39 @@ impl Cmd {
         exec(cmd.clone());
       },
       Cmd::SwitchWorkspace(index) => {
-        debug!("Cmd::SwitchWorkspace: {}", index);
-        workspaces.switch_to(ws, config, index - 1);
+        //debug!("Cmd::SwitchWorkspace: {}", index);
+        //workspaces.switch_to(ws, config, index - 1);
       },
       Cmd::SwitchScreen(screen) => {
-        debug!("Cmd::SwitchScreen: {}", screen);
-        workspaces.switch_to_screen(ws, config, screen - 1);
+        //debug!("Cmd::SwitchScreen: {}", screen);
+        //workspaces.switch_to_screen(ws, config, screen - 1);
+      },
+      Cmd::MoveFocus(ref op) => {
+        debug!("Cmd::MoveFocus");
+        workspaces.curr_mut().move_focus(ws, config, op.clone());
+      },
+      Cmd::MoveWindow(ref op) => {
+        debug!("Cmd::MoveWindow");
+        workspaces.curr_mut().move_window(ws, config, op.clone());
       },
       Cmd::MoveToWorkspace(index) => {
-        debug!("Cmd::MoveToWorkspace: {}", index);
-        workspaces.move_window_to(ws, config, index - 1);
+        //debug!("Cmd::MoveToWorkspace: {}", index);
+        //workspaces.move_window_to(ws, config, index - 1);
       },
       Cmd::MoveToScreen(screen) => {
-        debug!("Cmd::MoveToScreen: {}", screen);
-        workspaces.move_window_to_screen(ws, config, screen - 1);
+        //debug!("Cmd::MoveToScreen: {}", screen);
+        //workspaces.move_window_to_screen(ws, config, screen - 1);
+      },
+      Cmd::NestContainer(layout) => {
+        debug!("Cmd::NestContainer: {}", layout);
+        workspaces.curr_mut().add_container(layout);
       },
       Cmd::SendLayoutMsg(ref msg) => {
-        debug!("Cmd::SendLayoutMsg::{:?}", msg);
-        workspaces.current_mut().get_layout_mut().send_msg(msg.clone());
-        workspaces.current().redraw(ws, config);
+        //debug!("Cmd::SendLayoutMsg::{:?}", msg);
+        //workspaces.current_mut().get_layout_mut().send_msg(msg.clone());
+        //workspaces.current().redraw(ws, config);
       },
-      Cmd::Reload => {
+      Cmd::Reload => {/*
         let path = os::self_exe_name().unwrap();
         let filename = String::from_str(path.filename_str().unwrap());
         let absolute = String::from_str(path.as_str().unwrap());
@@ -101,39 +110,15 @@ impl Cmd {
             }
           },
           _ => panic!("failed to start \"{:?}\"", cmd)
-        }
+        }*/
       },
       Cmd::Exit => {
         debug!("Cmd::Exit");
         ws.close();
       },
       Cmd::KillClient => {
-        debug!("Cmd::KillClient: {}", workspaces.current_mut().focused_window());
-        ws.kill_window(workspaces.current_mut().focused_window());
-      },
-      Cmd::FocusUp => {
-        debug!("Cmd::FocusUp: {}", workspaces.current().focused_window());
-        workspaces.current_mut().move_focus(ws, config, MoveOp::Up);
-      },
-      Cmd::FocusDown => {
-        debug!("Cmd::FocusDown: {}", workspaces.current().focused_window());
-        workspaces.current_mut().move_focus(ws, config, MoveOp::Down);
-      },
-      Cmd::FocusMaster => {
-        debug!("Cmd::FocusMaster: {}", workspaces.current().focused_window());
-        workspaces.current_mut().move_focus(ws, config, MoveOp::Swap);
-      },
-      Cmd::SwapUp => {
-        debug!("Cmd::SwapUp: {}", workspaces.current().focused_window());
-        workspaces.current_mut().move_window(ws, config, MoveOp::Up);
-      },
-      Cmd::SwapDown => {
-        debug!("Cmd::SwapDown: {}", workspaces.current().focused_window());
-        workspaces.current_mut().move_window(ws, config, MoveOp::Down);
-      },
-      Cmd::SwapMaster => {
-        debug!("Cmd::SwapMaster: {}", workspaces.current().focused_window());
-        workspaces.current_mut().move_window(ws, config, MoveOp::Swap);
+        //debug!("Cmd::KillClient: {}", workspaces.current_mut().focused_window());
+        //ws.kill_window(workspaces.current_mut().focused_window());
       }
     }
   }
@@ -152,7 +137,7 @@ pub enum CmdManage {
 }
 
 impl CmdManage {
-  pub fn call<'a>(&self, ws: &XlibWindowSystem, workspaces: &mut Workspaces<'a>, config: &Config, window: Window) {
+  pub fn call<'a>(&self, ws: &XlibWindowSystem, workspaces: &mut Workspaces<'a>, config: &Config, window: Window) {/*
     match *self {
       CmdManage::Move(index) => {
         if let Some(parent) = ws.transient_for(window) {
@@ -178,7 +163,7 @@ impl CmdManage {
         debug!("CmdManage::Ignore");
         unimplemented!()
       }
-    }
+    }*/
   }
 }
 
@@ -195,7 +180,7 @@ pub struct LogHook<'a> {
 
 impl<'a> LogHook<'a> {
   pub fn call<'b>(&mut self, ws: &XlibWindowSystem, workspaces: &Workspaces<'b>) {
-    println!("{}", (self.output)(self.logs.iter().map(|x| x.call(ws, workspaces)).collect()));
+    //println!("{}", (self.output)(self.logs.iter().map(|x| x.call(ws, workspaces)).collect()));
   }
 }
 
@@ -209,17 +194,20 @@ impl CmdLogHook {
   pub fn call<'a>(&self, ws: &XlibWindowSystem, workspaces: &Workspaces<'a>) -> LogInfo {
     match *self {
       CmdLogHook::Workspaces => {
-        LogInfo::Workspaces(
+        LogInfo::Title(String::new())
+        /*LogInfo::Workspaces(
           workspaces.all().iter().map(|x| x.get_tag()).collect(),
           workspaces.get_index(),
           workspaces.all().iter().enumerate().filter(|&(i,x)| x.is_visible()).map(|(i,_)| i).collect(),
-          workspaces.all().iter().map(|x| x.is_urgent()).collect())
+          workspaces.all().iter().map(|x| x.is_urgent()).collect())*/
       },
       CmdLogHook::Title => {
-        LogInfo::Title(ws.get_window_title(workspaces.current().focused_window()))
+        LogInfo::Title(String::new())
+        //LogInfo::Title(ws.get_window_title(workspaces.current().focused_window()))
       },
       CmdLogHook::Layout => {
-        LogInfo::Layout(workspaces.current().get_layout().name())
+        LogInfo::Title(String::new())
+        //LogInfo::Layout(workspaces.current().get_layout().name())
       }
     }
   }

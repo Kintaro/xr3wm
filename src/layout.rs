@@ -1,5 +1,5 @@
 use xlib_window_system::XlibWindowSystem;
-use xlib::Window;
+use container::Node;
 use std::cmp::min;
 use std::num::Float;
 use std::iter::range;
@@ -11,6 +11,15 @@ pub struct Rect {
   pub y: u32,
   pub width: u32,
   pub height: u32
+}
+
+#[derive(Clone)]
+pub enum MoveOp {
+  Up,
+  Down,
+  Left,
+  Right,
+  Master
 }
 
 impl fmt::Debug for Rect {
@@ -25,8 +34,6 @@ pub enum LayoutMsg {
   Decrease,
   IncreaseMaster,
   DecreaseMaster,
-  SplitHorizontal,
-  SplitVertical,
   Custom(String)
 }
 
@@ -45,12 +52,6 @@ impl fmt::Debug for LayoutMsg {
       &LayoutMsg::DecreaseMaster => {
         write!(f, "DecreaseMaster")
       },
-      &LayoutMsg::SplitHorizontal => {
-        write!(f, "SplitHorizontal")
-      },
-      &LayoutMsg::SplitVertical => {
-        write!(f, "SplitVertical")
-      },
       &LayoutMsg::Custom(ref val) => {
         write!(f, "Custom({})", val.clone())
       }
@@ -61,10 +62,127 @@ impl fmt::Debug for LayoutMsg {
 pub trait Layout {
   fn name(&self) -> String;
   fn send_msg(&mut self, LayoutMsg);
-  fn apply(&self, &XlibWindowSystem, Rect, &Vec<Window>) -> Vec<Rect>;
+  fn move_focus<'a>(&self, usize, usize, MoveOp) -> (usize, bool);
+  fn apply<'a>(&self, &XlibWindowSystem, Rect, &Vec<Node<'a>>) -> Vec<Rect>;
   fn copy<'a>(&self) -> Box<Layout + 'a> { panic!("") }
 }
 
+#[derive(Clone)]
+pub struct HSplitLayout;
+
+impl HSplitLayout {
+  pub fn new<'a>() -> Box<Layout + 'a> {
+    Box::new(HSplitLayout)
+  }
+}
+
+impl Layout for HSplitLayout {
+  fn name(&self) -> String {
+    String::from_str("Horizontal")
+  }
+
+  fn send_msg(&mut self, msg: LayoutMsg) {
+
+  }
+
+  fn move_focus<'a>(&self, curr: usize, count: usize, op: MoveOp) -> (usize, bool) {
+    match op {
+      MoveOp::Left => {
+        if curr == 0 {
+          (count - 1, true)
+        } else {
+          (curr - 1, false)
+        }
+      },
+      MoveOp::Right => {
+        if curr == count - 1 {
+          (0, true)
+        } else {
+          (curr + 1, false)
+        }
+      },
+      _ => {
+        (curr, true)
+      }
+    }
+  }
+
+  fn apply<'b>(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Node<'b>>) -> Vec<Rect> {
+    let count = windows.len();
+
+    range(0us, count).map(|i| {
+      Rect {
+        x: area.x + (i as u32 * (area.width / count as u32)),
+        y: area.y,
+        width: area.width / count as u32,
+        height: area.height
+      }
+    }).collect()
+  }
+
+  fn copy<'b>(&self) -> Box<Layout + 'b> {
+    Box::new(self.clone())
+  }
+}
+
+#[derive(Clone)]
+pub struct VSplitLayout;
+
+impl VSplitLayout {
+  pub fn new<'a>() -> Box<Layout + 'a> {
+    Box::new(VSplitLayout)
+  }
+}
+
+impl Layout for VSplitLayout {
+  fn name(&self) -> String {
+    String::from_str("Horizontal")
+  }
+
+  fn send_msg(&mut self, msg: LayoutMsg) {
+
+  }
+
+  fn move_focus<'a>(&self, curr: usize, count: usize, op: MoveOp) -> (usize, bool) {
+    match op {
+      MoveOp::Up => {
+        if curr == 0 {
+          (count - 1, true)
+        } else {
+          (curr - 1, false)
+        }
+      },
+      MoveOp::Down => {
+        if curr == count - 1 {
+          (0, true)
+        } else {
+          (curr + 1, false)
+        }
+      },
+      _ => {
+        (curr, true)
+      }
+    }
+  }
+
+  fn apply<'b>(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Node<'b>>) -> Vec<Rect> {
+    let count = windows.len();
+
+    range(0us, count).map(|i| {
+      Rect {
+        x: area.x,
+        y: area.y + (i as u32 * (area.height / count as u32)),
+        width: area.width,
+        height: area.height / count as u32
+      }
+    }).collect()
+  }
+
+  fn copy<'b>(&self) -> Box<Layout + 'b> {
+    Box::new(self.clone())
+  }
+}
+/*
 #[derive(Clone, Copy)]
 pub struct TallLayout {
   num_masters: usize,
@@ -111,7 +229,7 @@ impl Layout for TallLayout {
     }
   }
 
-  fn apply(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Window>) -> Vec<Rect> {
+  fn apply<'b>(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Node<'b>>) -> Vec<Rect> {
     range(0, windows.len()).map(|i| {
       if i < self.num_masters {
         let yoff = area.height / min(self.num_masters, windows.len()) as u32;
@@ -151,7 +269,7 @@ impl<'a> Layout for StrutLayout<'a> {
     self.layout.send_msg(msg);
   }
 
-  fn apply(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Window>) -> Vec<Rect> {
+  fn apply<'b>(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Node<'b>>) -> Vec<Rect> {
     let mut new_area = Rect { x: 0, y: 0, width: 0, height: 0 };
     let strut = ws.get_strut(area);
 
@@ -191,7 +309,7 @@ impl<'a> Layout for GapLayout<'a> {
     self.layout.send_msg(msg);
   }
 
-  fn apply(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Window>) -> Vec<Rect> {
+  fn apply<'b>(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Node<'b>>) -> Vec<Rect> {
     let mut rects = self.layout.apply(ws, area, windows);
 
     for rect in rects.iter_mut() {
@@ -230,7 +348,7 @@ impl<'a> Layout for MirrorLayout<'a> {
     self.layout.send_msg(msg);
   }
 
-  fn apply(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Window>) -> Vec<Rect> {
+  fn apply<'b>(&self, ws: &XlibWindowSystem, area: Rect, windows: &Vec<Node<'b>>) -> Vec<Rect> {
     let mut rects = self.layout.apply(ws, area, windows);
 
     for rect in rects.iter_mut() {
@@ -244,3 +362,4 @@ impl<'a> Layout for MirrorLayout<'a> {
     MirrorLayout::new(self.layout.copy())
   }
 }
+*/

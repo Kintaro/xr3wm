@@ -1,6 +1,202 @@
 #![allow(dead_code, unused_must_use)]
 
 use config::Config;
+use container::Container;
+use layout::{Layout, MoveOp, HSplitLayout, VSplitLayout};
+use xlib::Window;
+use xlib_window_system::XlibWindowSystem;
+
+pub struct WorkspaceConfig<'a> {
+  pub tag: String,
+  pub screen: usize,
+  pub layout: Box<Layout + 'a>
+}
+
+struct Workspace<'a> {
+  managed: Container<'a>,
+  unmanaged: Vec<Window>,
+  tag: String,
+  screen: usize,
+  visible: bool,
+  focus: Window
+}
+
+impl<'a> Workspace<'a> {
+  pub fn new(tag: String, screen: usize, layout: Box<Layout + 'a>) -> Workspace<'a> {
+    Workspace {
+      managed: Container::new(layout.copy()),
+      unmanaged: Vec::new(),
+      tag: tag.clone(),
+      screen: screen,
+      visible: false,
+      focus: 0
+    }
+  }
+
+  pub fn contains(&self, window: Window) -> bool {
+    self.is_unmanaged(window) || self.managed.contains_rec(window)
+  }
+
+  pub fn is_unmanaged(&self, window: Window) -> bool {
+    self.unmanaged.iter().any(|&x| x == window)
+  }
+
+  pub fn focus(&self, ws: &XlibWindowSystem, config: &Config) {
+    if self.focus != 0 {
+      ws.focus_window(self.focus, config.border_focus_color);
+      ws.skip_enter_events();
+    }
+  }
+
+  pub fn add_window(&mut self, ws: &XlibWindowSystem, config: &Config, window: Window) {
+    if self.focus != 0 {
+      if let Some((_, c)) = self.managed.find_window(self.focus) {
+        c.add_window(window);
+      }
+    } else {
+      self.managed.add_window(window);
+    }
+
+    self.focus = window;
+    ws.show_window(window);
+    self.redraw(ws, config);
+  }
+
+  pub fn add_container(&mut self, index: usize) {
+    if self.focus != 0 {
+      if let Some((_, c)) = self.managed.find_window(self.focus) {
+        c.nest_container(if index == 0 { HSplitLayout::new() } else { VSplitLayout::new() });
+      }
+    } else {
+      self.managed.nest_container(if index == 0 { HSplitLayout::new() } else { VSplitLayout::new() });
+    }
+  }
+
+  pub fn move_focus(&mut self, ws: &XlibWindowSystem, config: &Config, op: MoveOp) {
+    if self.focus == 0 {
+      return;
+    }
+    
+    if let Some((_,container)) = self.managed.find_window(self.focus) {
+      ws.set_window_border_color(self.focus, config.border_color);
+      self.focus = container.move_focus(op);
+    }
+    self.focus(ws, config);
+  }
+
+  pub fn move_window(&mut self, ws: &XlibWindowSystem, config: &Config, op: MoveOp) {
+    /*
+    if self.focus == 0 {
+      return;
+    }
+
+    let old_focus = self.focus;
+    let mut new_focus = 0;
+    if let Some((index,container)) = self.managed.find_window(self.focus) {
+      //let index = self.managed.index_of_window(self.focus);
+      new_focus = container.move_focus(op);
+      if new_focus == self.focus {
+        return;
+      }
+
+      //ws.set_window_border_color(self.focus, config.border_color);
+      container.add_window(new_focus);
+      container.remove_at(index);
+    }
+
+    if let Some((index,container)) = self.managed.find_window(new_focus) {
+      container.add_window(old_focus);
+      container.remove_at(index);
+    }
+    self.focus = 0;*/
+
+    if let Some((_,container)) = self.managed.find_window(self.focus) {
+      container.move_window(op);
+    }
+
+    self.redraw(ws, config);
+  }
+
+  fn redraw(&self, ws: &XlibWindowSystem, config: &Config) {
+    debug!("Redraw...");
+
+    let screen = ws.get_screen_infos()[self.screen];
+
+    for &(window, rect) in self.managed.apply_layout(ws, screen).iter() {
+      debug!("  {}, {:?}", window, rect);
+      ws.setup_window(rect.x, rect.y, rect.width, rect.height, config.border_width, config.border_color, window);
+    }
+
+    self.focus(ws, config);
+/*
+    for &window in self.unmanaged.visible.iter() {
+      let mut rect = ws.get_geometry(window);
+      rect.width = rect.width + (2 * config.border_width);
+      rect.height = rect.height + (2 * config.border_width);
+
+      ws.setup_window((screen.width - rect.width) / 2, (screen.height - rect.height) / 2, rect.width, rect.height, config.border_width, config.border_color, window);
+    }
+
+    for &window in self.all_urgent().iter() {
+      ws.set_window_border_color(window, config.border_urgent_color);
+    }
+
+    self.focus(ws, config);*/
+  }
+}
+
+pub struct Workspaces<'a> {
+  list: Vec<Workspace<'a>>,
+  curr: usize
+}
+
+impl<'a> Workspaces<'a> {
+  pub fn new<'b>(config: &'b Config<'a>, screens: usize) -> Workspaces<'a> {
+    let mut workspaces = Workspaces {
+      list: config.workspaces.iter().map(|c| {
+        Workspace::new(c.tag.clone(), c.screen, c.layout.copy())
+      }).collect(),
+      curr: 0,
+    };
+
+    for screen in range(0us, screens) {
+      if workspaces.list.iter().find(|ws| ws.screen == screen).is_none() {
+        match workspaces.list.iter_mut().filter(|ws| ws.screen == 0).nth(1) {
+          Some(ws) => {
+            ws.screen = screen;
+          },
+          None => {}
+        }
+      }
+    }
+
+    for screen in range(0us, screens) {
+      let ws = workspaces.list.iter_mut().find(|ws| ws.screen == screen).unwrap();
+      ws.visible = true;
+    }
+
+    workspaces
+  }
+
+  pub fn curr(&self) -> &Workspace<'a> {
+    &self.list[self.curr]
+  }
+
+  pub fn curr_mut(&mut self) -> &mut Workspace<'a> {
+    &mut self.list[self.curr]
+  }
+
+  pub fn is_unmanaged(&self, window: Window) -> bool {
+    self.list.iter().any(|ws| ws.is_unmanaged(window))
+  }
+
+  pub fn contains(&self, window: Window) -> bool {
+    self.list.iter().any(|ws| ws.contains(window))
+  }
+}
+
+/*
+use config::Config;
 use layout::Layout;
 use xlib::Window;
 use xlib_window_system::XlibWindowSystem;
@@ -665,3 +861,4 @@ impl<'a> Workspaces<'a> {
     self.list[dest].screen = screen;
   }
 }
+*/
